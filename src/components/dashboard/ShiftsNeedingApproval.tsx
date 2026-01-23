@@ -18,6 +18,26 @@ export const ShiftsNeedingApprovalTable = () => {
     VerifyWeeklyHours(unverified_ids);
   };
 
+  const formatHours = (hours?: number) => {
+    if (hours == null) return "–";
+
+    const totalMinutes = Math.round(hours * 60);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+
+    return `${h}:${m.toString().padStart(2, "0")}`;
+  };
+
+  const formatWeekOf = (iso?: string) => {
+    if (!iso) return "–";
+
+    const date = new Date(iso + "T00:00:00"); // avoid TZ issues
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  };
+
   return (
     <>
       <Card className="bg-[var(--color-surface)] border-[var(--color-border)]">
@@ -31,16 +51,16 @@ export const ShiftsNeedingApprovalTable = () => {
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="table-fixed w-full text-sm">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="min-w-[140px]">Week Of</TableHead>
-                  <TableHead className="min-w-[100px]">Monday</TableHead>
-                  <TableHead className="min-w-[100px]">Tuesday</TableHead>
-                  <TableHead className="min-w-[100px]">Wednesday</TableHead>
-                  <TableHead className="min-w-[100px]">Thursday</TableHead>
-                  <TableHead className="min-w-[80px]">Friday</TableHead>
-                  <TableHead className="min-w-[80px]">Total</TableHead>
+                  <TableHead className="w-[84px] px-2 py-2">Week of</TableHead>
+                  <TableHead className="w-[52px] px-2 py-2 text-center">Mon</TableHead>
+                  <TableHead className="w-[52px] px-2 py-2 text-center">Tue</TableHead>
+                  <TableHead className="w-[52px] px-2 py-2 text-center">Wed</TableHead>
+                  <TableHead className="w-[52px] px-2 py-2 text-center">Thu</TableHead>
+                  <TableHead className="w-[52px] px-2 py-2 text-center">Fri</TableHead>
+                  <TableHead className="w-[52px] px-2 py-2 text-center">Total</TableHead>
                   <TableHead className="text-center min-w-[80px]">
                     Confirm
                   </TableHead>
@@ -51,13 +71,27 @@ export const ShiftsNeedingApprovalTable = () => {
                   // Shows the last 5 weeks
                   return (
                     <TableRow key={entry.week_start_date}>
-                      <TableCell>{entry.week_start_date}</TableCell>
-                      <TableCell>{entry.monday_hours}</TableCell>
-                      <TableCell>{entry.tuesday_hours}</TableCell>
-                      <TableCell>{entry.wednesday_hours}</TableCell>
-                      <TableCell>{entry.thursday_hours}</TableCell>
-                      <TableCell>{entry.friday_hours}</TableCell>
-                      <TableCell>{entry.total_week_hours}</TableCell>
+                      <TableCell className="whitespace-nowrap tabular-nums">
+                        {formatWeekOf(entry.week_start_date)}
+                      </TableCell>
+                      <TableCell className="px-2 py-2 text-center tabular-nums">
+                        {formatHours(entry.monday_hours)}
+                      </TableCell>
+                      <TableCell className="px-2 py-2 text-center tabular-nums">
+                        {formatHours(entry.tuesday_hours)}
+                      </TableCell>
+                      <TableCell className="px-2 py-2 text-center tabular-nums">
+                        {formatHours(entry.wednesday_hours)}
+                      </TableCell>
+                      <TableCell className="px-2 py-2 text-center tabular-nums">
+                        {formatHours(entry.thursday_hours)}
+                      </TableCell>
+                      <TableCell className="px-2 py-2 text-center tabular-nums">
+                        {formatHours(entry.friday_hours)}
+                      </TableCell>
+                      <TableCell className="text-center font-medium">
+                        {formatHours(entry.total_week_hours)}
+                      </TableCell>
                       <TableCell className="text-center">
                         {!entry.has_pending_entries ? (
                           !entry.all_verified ? (

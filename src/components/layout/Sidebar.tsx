@@ -248,8 +248,21 @@ const SidebarContent: React.FC<{
             : 'text-[var(--color-subtext)] hover:bg-[var(--color-border)] hover:text-[var(--color-text)]'
         )}
       >
-        <Icon className="h-4 w-4 flex-shrink-0" />
-        <span className="truncate">{item.label}</span>
+        <Icon
+          className={cn(
+            "h-4 w-4 flex-shrink-0",
+            active ? "text-white" : "text-[var(--color-subtext)]"
+          )}
+        />
+
+        <span
+          className={cn(
+            "truncate",
+            active ? "text-white" : "text-[var(--color-subtext)]"
+          )}
+        >
+          {item.label}
+        </span>
         {item.badge && (
           <Badge variant="secondary" className="ml-auto text-xs">
             {item.badge}
@@ -272,7 +285,13 @@ const SidebarContent: React.FC<{
               "h-4 w-4",
               hasActiveChild && "text-[var(--color-accent)]"
             )} />
-            <span>{group.title}</span>
+            <span
+              className={cn(
+                hasActiveChild ? "!text-[var(--color-accent)]" : "!text-[var(--color-text)]"
+              )}
+            >
+              {group.title}
+            </span>
           </div>
           {isOpen ? (
             <ChevronDown className="h-4 w-4 text-[var(--color-subtext)]" />
@@ -348,8 +367,21 @@ const SidebarContent: React.FC<{
               : 'text-[var(--color-text)] hover:bg-[var(--color-border)]'
           )}
         >
-          <LayoutDashboard className="h-5 w-5" />
-          <span>Dashboard</span>
+          <LayoutDashboard
+            className={cn(
+              "h-5 w-5",
+              isActive("/dashboard") || isActive("/") ? "text-white" : "text-[var(--color-text)]"
+            )}
+          />
+          <span
+            className={cn(
+              isActive("/dashboard") || isActive("/")
+                ? "text-white"
+                : "text-[var(--color-text)]"
+            )}
+          >
+            Dashboard
+          </span>
         </Link>
 
         <div className="pt-2 space-y-2">

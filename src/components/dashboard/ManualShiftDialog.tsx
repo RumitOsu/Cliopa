@@ -35,8 +35,8 @@ export const ManualShiftDialog = ({
 }: ManualEntryDialogProps) => {
   const { profile, loading: profileLoading } = useProfile();
 
-  const [requestedEndTime, setRequestedEndTime] = useState();
-  const [requestedStartTime, setRequestedStartTime] = useState();
+  const [requestedStartTime, setRequestedStartTime] = useState<string>("");
+  const [requestedEndTime, setRequestedEndTime] = useState<string>("");
 
   const [reason, setReason] = useState("");
   const { createTimeCorrection, createManualTimeEntry, loading } =
@@ -44,8 +44,13 @@ export const ManualShiftDialog = ({
   const [requestedShiftType, setRequestedShiftType] =
     useState<string>("regular");
 
+    const invalidRange =
+      !!requestedStartTime &&
+      !!requestedEndTime &&
+      requestedEndTime < requestedStartTime;
+
   const handleSubmit = async () => {
-    if (!profile || !requestedStartTime || !requestedEndTime) return;
+    if (!profile || !requestedStartTime || !requestedEndTime || !reason.trim()) return;
 
     const prefixedReason = "Manual Entry: ".concat(reason);
     const startTime = new Date(requestedStartTime).toISOString();
@@ -106,28 +111,31 @@ export const ManualShiftDialog = ({
             />
           </div>
 
-          <Label htmlFor="request-type">Shift Type</Label>
-          <Select
-            value={requestedShiftType}
-            onValueChange={setRequestedShiftType}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="regular">Regular Shift</SelectItem>
-              <SelectItem value="alternate">
-                Alternate Portfolio Shift
-              </SelectItem>
-              <SelectItem value="training">Training Shift</SelectItem>
-              <SelectItem value="bonus">Bonus Shift</SelectItem>
-            </SelectContent>
-          </Select>
+          <div>
+            <Label htmlFor="request-type">Shift Type</Label>
+            <Select
+              value={requestedShiftType}
+              onValueChange={setRequestedShiftType}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="regular">Regular Shift</SelectItem>
+                <SelectItem value="alternate">
+                  Alternate Portfolio Shift
+                </SelectItem>
+                <SelectItem value="training">Training Shift</SelectItem>
+                <SelectItem value="bonus">Bonus Shift</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           <div>
-            <Label htmlFor="reason">Reason for Manual Entry</Label>
+            <Label htmlFor="reason">Reason for Manual Entry*</Label>
             <Textarea
               id="reason"
+              placeholder="Please explain why you need this manual entry (e.g., 'Forgot to clock in' or 'System issue during login')"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
@@ -145,8 +153,10 @@ export const ManualShiftDialog = ({
               loading ||
               !requestedStartTime ||
               !requestedEndTime ||
-              requestedEndTime < requestedStartTime
+              invalidRange ||
+              !reason.trim()
             }
+            className="disabled:bg-muted disabled:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? "Submitting..." : "Submit Request"}
           </Button>
