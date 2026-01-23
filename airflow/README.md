@@ -82,7 +82,24 @@ airflow users create \
     --password admin
 ```
 
-### 3. Configure Variables
+### 3. Configure Environment
+
+Create `airflow/.env` with your credentials (used by Docker Compose to populate Airflow Variables):
+
+```bash
+MSSQL_SERVER=sql03.ad.yattaops.com
+MSSQL_DATABASE=Yatta
+MSSQL_USERNAME=bsimmons
+MSSQL_PASSWORD=YOUR_PASSWORD
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_KEY=YOUR_SERVICE_ROLE_KEY
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY
+GEMINI_MODEL=gemini-2.0-flash
+SYNC_LOOKBACK_HOURS=24
+SYNC_BATCH_SIZE=50
+```
+
+### 4. (Optional) Configure Variables via Airflow UI
 
 Import the variables template and update with real values:
 
@@ -107,7 +124,7 @@ Required Variables:
 | `SYNC_LOOKBACK_HOURS` | Hours to look back (default: 24) |
 | `SYNC_BATCH_SIZE` | Batch size (default: 50) |
 
-### 4. Start Airflow
+### 5. Start Airflow
 
 ```bash
 # Start webserver (terminal 1)
@@ -119,7 +136,7 @@ airflow scheduler
 
 Access UI at: http://localhost:8080
 
-### 5. Enable the DAG
+### 6. Enable the DAG
 
 In the Airflow UI:
 1. Navigate to DAGs
