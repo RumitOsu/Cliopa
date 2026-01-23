@@ -33,6 +33,16 @@ logger = logging.getLogger(__name__)
 # DAG DEFINITION
 # =============================================================================
 
+def _parse_json_response(response_text: str) -> dict[str, Any]:
+    """Parse a JSON string that may be wrapped in code fences."""
+    cleaned = response_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```", 1)[1]
+        if cleaned.lstrip().startswith("json"):
+            cleaned = cleaned.lstrip()[4:]
+    return json.loads(cleaned)
+
+
 @dag(
     dag_id="call_sync_and_audit",
     description="Sync Five9 calls to Supabase and score with Gemini AI",
@@ -68,6 +78,11 @@ def call_sync_dag():
             "gemini": {
                 "api_key": Variable.get("GEMINI_API_KEY", deserialize_json=False),
                 "model": Variable.get("GEMINI_MODEL", default_var="gemini-2.0-flash"),
+            },
+            "validation": {
+                "enabled": Variable.get("ENABLE_AUDIT_VALIDATION", default_var="false").lower() == "true",
+                "model": Variable.get("GEMINI_VALIDATOR_MODEL", default_var="gemini-2.0-flash"),
+                "max_tokens": int(Variable.get("GEMINI_VALIDATOR_MAX_TOKENS", default_var="3000")),
             },
             "sync": {
                 "lookback_hours": int(Variable.get("SYNC_LOOKBACK_HOURS", default_var="24")),
@@ -520,13 +535,7 @@ Return ONLY valid JSON with this structure:
                     )
 
                     # Parse response
-                    response_text = response.text.strip()
-                    if response_text.startswith("```"):
-                        response_text = response_text.split("```")[1]
-                        if response_text.startswith("json"):
-                            response_text = response_text[4:]
-
-                    audit_result = json.loads(response_text)
+                    audit_result = _parse_json_response(response.text)
                     audit_result["from_cache"] = False
 
                     # Cache the result
@@ -546,10 +555,99 @@ Return ONLY valid JSON with this structure:
             audit_result["call_db_id"] = call.get("id")
             audit_result["call_id"] = call.get("call_id")
             audit_result["user_id"] = call.get("user_id")
+            audit_result["transcript_text"] = transcript
             scored_calls.append(audit_result)
 
         logger.info(f"Scored {len(scored_calls)} calls with Gemini")
         return scored_calls
+
+    @task()
+    def validate_scored_calls(
+        scored_calls: list[dict[str, Any]],
+        config: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Validate/adjust AI scores for consistency using a second Gemini pass."""
+        if not scored_calls:
+            return []
+
+        if not config["validation"]["enabled"]:
+            for r in scored_calls:
+                r["validation_status"] = "skipped"
+            return scored_calls
+
+        validator_model_name = config["validation"]["model"]
+        genai.configure(api_key=config["gemini"]["api_key"])
+        validator = genai.GenerativeModel(validator_model_name)
+
+        validated = []
+
+        for result in scored_calls:
+            transcript = result.get("transcript_text", "")
+            if not transcript:
+                result["validation_status"] = "skipped_no_transcript"
+                validated.append(result)
+                continue
+
+            base_result = {k: v for k, v in result.items() if k != "transcript_text"}
+
+            prompt = f"""You are a senior QA auditor reviewing another AI's call audit.
+
+TASK:
+- Verify the audit results against the transcript.
+- If the audit is accurate and consistent, set "accept": true.
+- If any score/criteria is off, set "accept": false and provide a corrected_result.
+
+TRANSCRIPT:
+{transcript[:12000]}
+
+AI_AUDIT_RESULT_JSON:
+{json.dumps(base_result, ensure_ascii=True)}
+
+Return ONLY valid JSON with this structure:
+{{
+  "accept": true|false,
+  "notes": "short reasoning",
+  "corrected_result": {{ ...full audit result json... }}  // only if accept=false
+}}"""
+
+            try:
+                response = validator.generate_content(
+                    prompt,
+                    generation_config=genai.GenerationConfig(
+                        response_mime_type="application/json",
+                        temperature=0.2,
+                        max_output_tokens=config["validation"]["max_tokens"],
+                    ),
+                )
+
+                validation = _parse_json_response(response.text)
+                if validation.get("accept") is True:
+                    result["validation_status"] = "accepted"
+                    result["validation_notes"] = validation.get("notes")
+                    validated.append(result)
+                else:
+                    corrected = validation.get("corrected_result")
+                    if isinstance(corrected, dict):
+                        # Preserve call identifiers and metadata
+                        corrected["call_db_id"] = result.get("call_db_id")
+                        corrected["call_id"] = result.get("call_id")
+                        corrected["user_id"] = result.get("user_id")
+                        corrected["from_cache"] = result.get("from_cache", False)
+                        corrected["validation_status"] = "corrected"
+                        corrected["validation_notes"] = validation.get("notes")
+                        corrected["transcript_text"] = transcript
+                        validated.append(corrected)
+                    else:
+                        result["validation_status"] = "failed_no_correction"
+                        result["validation_notes"] = validation.get("notes")
+                        validated.append(result)
+            except Exception as e:
+                logger.error(f"Validation failed for call {result.get('call_id')}: {e}")
+                result["validation_status"] = "failed_error"
+                validated.append(result)
+
+        logger.info(f"Validated {len(validated)} scored calls")
+        return validated
 
     @task()
     def save_report_cards(
@@ -570,6 +668,8 @@ Return ONLY valid JSON with this structure:
 
         for result in scored_calls:
             try:
+                # Remove large fields not needed in DB
+                result.pop("transcript_text", None)
                 # Insert report card
                 report_card = {
                     "user_id": result["user_id"],
@@ -619,7 +719,8 @@ Return ONLY valid JSON with this structure:
     inserted_calls = insert_calls_to_supabase(calls_with_transcripts, agent_mapping, config)
     criteria = load_audit_template(config)
     scored_calls = score_calls_with_gemini(inserted_calls, criteria, config)
-    save_report_cards(scored_calls, config)
+    validated_calls = validate_scored_calls(scored_calls, config)
+    save_report_cards(validated_calls, config)
 
 
 # Instantiate the DAG
