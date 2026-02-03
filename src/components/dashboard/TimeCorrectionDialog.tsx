@@ -167,26 +167,28 @@ export const TimeCorrectionDialog = ({
                 />
               </div>
 
-              <Label htmlFor="request-type">Actual Shift Type</Label>
-              <Select
-                value={requestedShiftType}
-                onValueChange={setRequestedShiftType}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="regular">Regular Shift</SelectItem>
-                  <SelectItem value="alternate">
-                    Alternate Portfolio Shift
-                  </SelectItem>
-                  <SelectItem value="training">Training Shift</SelectItem>
-                  <SelectItem value="bonus">Bonus Shift</SelectItem>
-                </SelectContent>
-              </Select>
+              <div>
+                <Label htmlFor="request-type">Actual Shift Type</Label>
+                <Select
+                  value={requestedShiftType}
+                  onValueChange={setRequestedShiftType}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="regular">Regular Shift</SelectItem>
+                    <SelectItem value="alternate">
+                      Alternate Portfolio Shift
+                    </SelectItem>
+                    <SelectItem value="training">Training Shift</SelectItem>
+                    <SelectItem value="bonus">Bonus Shift</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
               <div>
-                <Label htmlFor="reason">Reason for Correction</Label>
+                <Label htmlFor="reason">Reason for Correction*</Label>
                 <Textarea
                   id="reason"
                   placeholder="Please explain why you need this time correction (e.g., 'Was on a customer call that ran over')"
@@ -204,6 +206,7 @@ export const TimeCorrectionDialog = ({
               <Button
                 onClick={handleSubmit}
                 disabled={loading || !reason.trim() || !requestedEndTime}
+                className="disabled:bg-muted disabled:text-muted-foreground disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {loading ? "Submitting..." : "Submit Request"}
               </Button>

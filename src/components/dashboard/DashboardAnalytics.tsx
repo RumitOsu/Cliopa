@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
@@ -216,10 +216,80 @@ const WeeklyHoursChart: React.FC<{ data: WeeklyHoursEntry | null }> = ({ data })
 export const DashboardAnalytics: React.FC = () => {
   const { profile, loading: profileLoading } = useProfile();
   const { entries, loading: hoursLoading } = useWeeklyHours();
-  const { todayHours, isShiftActive } = useTimeTracking();
+  const { todayHours, isShiftActive, currentEntry } = useTimeTracking();
+
+  const [currentShiftHours, setCurrentShiftHours] = useState(0);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    if (isShiftActive && currentEntry?.start_time) {
+      const start = new Date(currentEntry.start_time);
+
+      const tick = () => {
+        const now = new Date();
+        const hours = (now.getTime() - start.getTime()) / (1000 * 60 * 60);
+        setCurrentShiftHours(hours);
+      };
+
+      tick(); // update immediately so it doesn’t wait for the first interval
+      interval = setInterval(tick, 30_000); // update every 30s (or 60_000)
+    } else {
+      setCurrentShiftHours(0);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isShiftActive, currentEntry]);
 
   const currentWeekData = entries.length > 0 ? entries[0] : null;
   const lastWeekData = entries.length > 1 ? entries[1] : null;
+  const liveWeekHours = (currentWeekData?.total_week_hours || 0) + (isShiftActive ? currentShiftHours : 0);
+
+  // Helper: map JS day index -> your WeeklyHoursEntry field
+  const getDayField = (d: number) => {
+    // JS: 0=Sun,1=Mon,...6=Sat
+    if (d === 1) return 'monday_hours';
+    if (d === 2) return 'tuesday_hours';
+    if (d === 3) return 'wednesday_hours';
+    if (d === 4) return 'thursday_hours';
+    if (d === 5) return 'friday_hours';
+    return null; // weekends not shown in this chart
+  };
+
+  const todayField = getDayField(new Date().getDay());
+
+  const liveWeekData: WeeklyHoursEntry | null = (() => {
+    // If we have real week data, clone + add live hours into today + total
+    if (currentWeekData) {
+      if (!isShiftActive || !todayField) return currentWeekData;
+
+      return {
+        ...currentWeekData,
+        [todayField]: (currentWeekData[todayField] as number) + currentShiftHours,
+        total_week_hours: currentWeekData.total_week_hours + currentShiftHours,
+      };
+    }
+
+    // If week data hasn't loaded/exists yet but you're clocked in,
+    // synthesize minimal data so the chart still "goes live"
+    if (isShiftActive && todayField) {
+      return {
+        monday_hours: 0,
+        tuesday_hours: 0,
+        wednesday_hours: 0,
+        thursday_hours: 0,
+        friday_hours: 0,
+        total_week_hours: currentShiftHours,
+        all_verified: false,
+        unverified_ids: [],
+        [todayField]: currentShiftHours,
+      } as unknown as WeeklyHoursEntry;
+    }
+
+    return null;
+  })();
 
   // Calculate week-over-week change
   const weekOverWeekChange =
@@ -255,21 +325,22 @@ export const DashboardAnalytics: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Today's Hours"
-          value={formatHours(todayHours)}
+          value={formatHours(todayHours + (isShiftActive ? currentShiftHours : 0))}
           subtitle={isShiftActive ? 'Currently clocked in' : 'Not clocked in'}
           icon={Timer}
           variant={isShiftActive ? 'success' : 'default'}
         />
         <StatCard
           title="This Week"
-          value={`${(currentWeekData?.total_week_hours || 0).toFixed(1)}h`}
+          value={`${liveWeekHours.toFixed(1)}h`}
           subtitle="Total hours worked"
           icon={Clock}
-          trend={
-            weekOverWeekChange !== 0
-              ? { value: Math.round(weekOverWeekChange), positive: weekOverWeekChange > 0 }
-              : undefined
-          }
+          // Removed as this trend will almost always be negative
+          // trend={
+          //   weekOverWeekChange !== 0
+          //     ? { value: Math.round(weekOverWeekChange), positive: weekOverWeekChange > 0 }
+          //     : undefined
+          // }
         />
         <StatCard
           title="PTO Available"
@@ -297,7 +368,7 @@ export const DashboardAnalytics: React.FC = () => {
 
       {/* Weekly Hours Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <WeeklyHoursChart data={currentWeekData} />
+        <WeeklyHoursChart data={liveWeekData} />
 
         {/* PTO/UTO Balance Cards */}
         <div className="space-y-4">

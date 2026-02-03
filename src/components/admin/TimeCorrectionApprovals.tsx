@@ -49,7 +49,29 @@ export const TimeCorrectionApprovals = ({
 
   // Check if a correction is "urgent" (over 60 minutes difference)
   const isUrgentCorrection = (correction: any): boolean => {
+    if (isManualEntryCorrection(correction)) {
+      return getManualEntryDurationMinutes(correction) > 60;
+    }
     return getTimeDeltaMinutes(correction) > 60;
+  };
+
+  // Treat as "manual entry" when there was no prior shift.
+  const isManualEntryCorrection = (correction: any): boolean => {
+    const reason = (correction?.reason || "").toString().toLowerCase();
+    return reason.includes("manual entry");
+  };
+
+  // For manual entries, treat urgency as "how long is the new shift?"
+  const getManualEntryDurationMinutes = (correction: any): number => {
+    const start =
+      correction.requested_start_time ?? correction.current_start_time ?? null;
+    const end =
+      correction.requested_end_time ?? correction.current_end_time ?? null;
+
+    if (!start || !end) return 0;
+
+    const diffMs = new Date(end).getTime() - new Date(start).getTime();
+    return Math.max(0, diffMs / (1000 * 60));
   };
 
   // Sort and filter corrections - urgent ones first
@@ -119,6 +141,24 @@ export const TimeCorrectionApprovals = ({
       }`.trim();
     }
     return correction.email || "Unknown Employee";
+  };
+
+  const calculateManualEntryHours = (
+    requestedStart: string | null,
+    requestedEnd: string | null
+  ) => {
+    if (!requestedStart || !requestedEnd) return "----------";
+
+    const start = new Date(requestedStart);
+    const end = new Date(requestedEnd);
+
+    const diffMinutes = Math.max(0, (end.getTime() - start.getTime()) / (1000 * 60));
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = Math.round(diffMinutes % 60);
+
+    if (hours === 0) return `+${minutes} mins`;
+    if (hours === 1) return `+${hours} hour ${minutes} mins`;
+    return `+${hours} hours ${minutes} mins`;
   };
 
   const calculateExtraHours = (
@@ -219,6 +259,7 @@ export const TimeCorrectionApprovals = ({
             ) : (
               <div className="space-y-6">
                 {sortedCorrections.map((correction) => {
+                  const isManual = isManualEntryCorrection(correction);
                   const isUrgent = isUrgentCorrection(correction);
                   return (
                   <div
@@ -248,64 +289,27 @@ export const TimeCorrectionApprovals = ({
 
                         <div className="grid grid-cols-3 gap-4 text-sm">
                           <div>
-                            <span className="font-medium text-gray-700">
-                              Original Start Time:
-                            </span>
+                            <span className="font-medium text-gray-700">Original Start Time:</span>
                             <p className="text-gray-600">
-                              {format(
-                                parseISO(correction.original_start_time),
-                                "MMM dd, yyyy 'at' h:mm a"
-                              )}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">
-                              Original End Time:
-                            </span>
-                            <p className="text-gray-600">
-                              {format(
-                                parseISO(correction.original_end_time),
-                                "MMM dd, yyyy 'at' h:mm a"
-                              )}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">
-                              Original Shift Type:
-                            </span>
-                            <p className="text-gray-600">
-                              {correction.original_shift_type}
+                              {isManual
+                                ? "----------"
+                                : format(parseISO(correction.current_start_time), "MMM dd, yyyy 'at' h:mm a")}
                             </p>
                           </div>
 
                           <div>
-                            <span className="font-medium text-gray-700">
-                              Current Start Time:
-                            </span>
+                            <span className="font-medium text-gray-700">Original End Time:</span>
                             <p className="text-gray-600">
-                              {format(
-                                parseISO(correction.current_start_time),
-                                "MMM dd, yyyy 'at' h:mm a"
-                              )}
+                              {isManual
+                                ? "----------"
+                                : format(parseISO(correction.current_end_time), "MMM dd, yyyy 'at' h:mm a")}
                             </p>
                           </div>
+
                           <div>
-                            <span className="font-medium text-gray-700">
-                              Current End Time:
-                            </span>
+                            <span className="font-medium text-gray-700">Original Shift Type:</span>
                             <p className="text-gray-600">
-                              {format(
-                                parseISO(correction.current_end_time),
-                                "MMM dd, yyyy 'at' h:mm a"
-                              )}
-                            </p>
-                          </div>
-                          <div>
-                            <span className="font-medium text-gray-700">
-                              Current Shift Type:
-                            </span>
-                            <p className="text-gray-600">
-                              {correction.current_shift_type}
+                              {isManual ? "----------" : correction.current_shift_type}
                             </p>
                           </div>
 
@@ -342,7 +346,9 @@ export const TimeCorrectionApprovals = ({
                             <p className="text-gray-600">
                               {correction.requested_shift_type
                                 ? correction.requested_shift_type
-                                : "----------"}
+                                : isManual
+                                  ? correction.current_shift_type
+                                  : "----------"}
                             </p>
                           </div>
                         </div>
@@ -352,12 +358,17 @@ export const TimeCorrectionApprovals = ({
                             Additional Hours:
                           </span>
                           <span className="ml-2 text-blue-600 font-medium">
-                            {calculateExtraHours(
-                              correction.current_start_time,
-                              correction.current_end_time,
-                              correction.requested_start_time,
-                              correction.requested_end_time
-                            )}
+                            {isManual
+                              ? calculateManualEntryHours(
+                                  correction.requested_start_time ?? correction.current_start_time,
+                                  correction.requested_end_time ?? correction.current_end_time
+                                )
+                              : calculateExtraHours(
+                                  correction.current_start_time,
+                                  correction.current_end_time,
+                                  correction.requested_start_time,
+                                  correction.requested_end_time
+                                )}
                           </span>
                         </div>
 

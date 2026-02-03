@@ -32,7 +32,8 @@ This Airflow setup automates the call ingestion and AI auditing pipeline.
 6. **insert_calls_to_supabase** - Store call records
 7. **load_audit_template** - Get audit criteria from database
 8. **score_calls_with_gemini** - AI-powered call scoring
-9. **save_report_cards** - Store audit results
+9. **validate_scored_calls** - Second-pass validation for consistency (optional)
+10. **save_report_cards** - Store audit results
 
 ### Filtering Logic:
 
@@ -121,6 +122,9 @@ Required Variables:
 | `SUPABASE_SERVICE_KEY` | Supabase service role key |
 | `GEMINI_API_KEY` | Google AI Studio API key |
 | `GEMINI_MODEL` | Model name (default: gemini-2.0-flash) |
+| `ENABLE_AUDIT_VALIDATION` | Run a second-pass validator (true/false) |
+| `GEMINI_VALIDATOR_MODEL` | Validator model name |
+| `GEMINI_VALIDATOR_MAX_TOKENS` | Validator max output tokens |
 | `SYNC_LOOKBACK_HOURS` | Hours to look back (default: 24) |
 | `SYNC_BATCH_SIZE` | Batch size (default: 50) |
 
