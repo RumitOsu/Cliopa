@@ -467,7 +467,7 @@ Agent: You''re welcome! Have a wonderful day.'
     (
         v_jake_id,
         v_manager_id,
-        'call_review',
+        'skill_development',
         'Empathy Training Follow-up',
         'Review of recent calls to reinforce empathy techniques discussed in last session.',
         NOW() - INTERVAL '7 days',
@@ -484,7 +484,7 @@ Agent: You''re welcome! Have a wonderful day.'
     (
         v_jake_id,
         v_manager_id,
-        'performance_improvement',
+        'performance_review',
         'Script Adherence Coaching',
         'Address lower script adherence scores from last week.',
         NOW() - INTERVAL '21 days',
