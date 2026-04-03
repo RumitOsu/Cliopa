@@ -145,41 +145,33 @@ const AdminReportsPage = () => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - parseInt(dateRange));
 
-      const { data, error } = await supabase
-        .from('report_cards')
-        .select(`
-          id,
-          user_id,
-          call_id,
-          overall_score,
-          compliance_score,
-          communication_score,
-          empathy_score,
-          accuracy_score,
-          tone_score,
-          feedback,
-          strengths,
-          areas_for_improvement,
-          created_at,
-          profiles:user_id (
-            first_name,
-            last_name,
-            email,
-            team
-          ),
-          call:call_id (
-            id,
-            call_start_time,
-            call_duration_seconds,
-            recording_url,
-            campaign_name,
-            disposition
-          )
-        `)
-        .gte('created_at', startDate.toISOString())
-        .order('created_at', { ascending: false });
+      // Use SECURITY DEFINER RPC to bypass RLS for manager access
+      const { data: cards, error: rpcError } = await supabase.rpc('get_report_cards_for_manager');
+      if (rpcError) throw rpcError;
 
-      if (error) throw error;
+      // Filter by date range
+      const filtered = (cards || []).filter((c: any) => new Date(c.created_at) >= startDate);
+
+      // Get profiles and calls for the filtered cards
+      const userIds = [...new Set(filtered.map((c: any) => c.user_id))];
+      const callIds = filtered.map((c: any) => c.call_id).filter(Boolean);
+
+      const [profilesRes, callsRes] = await Promise.all([
+        userIds.length ? supabase.from('profiles').select('id, first_name, last_name, email, team').in('id', userIds) : { data: [] },
+        callIds.length ? supabase.from('calls').select('id, call_start_time, call_duration_seconds, recording_url, campaign_name, disposition').in('id', callIds) : { data: [] },
+      ]);
+
+      const profileMap = new Map((profilesRes.data || []).map((p: any) => [p.id, p]));
+      const callMap = new Map((callsRes.data || []).map((c: any) => [c.id, c]));
+
+      // Merge and sort
+      const data = filtered
+        .map((c: any) => ({
+          ...c,
+          profiles: profileMap.get(c.user_id) || null,
+          call: callMap.get(c.call_id) || null,
+        }))
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       setReportCards(data || []);
 

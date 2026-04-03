@@ -5,6 +5,8 @@
   "main": "sync.js",
   "type": "module",
   "scripts": {
+    "seed:all": "node seed-all.js",
+    "seed:all:clean": "CLEAN=true node seed-all.js",
     "seed": "node seed-transcripts.js",
     "seed:dry": "DRY_RUN=true node seed-transcripts.js",
     "seed:small": "TARGET_CALLS=50 DELAY_MS=1200 node seed-transcripts.js",
