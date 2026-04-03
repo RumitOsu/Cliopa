@@ -11,7 +11,7 @@ import {
 
 export const useReportCards = () => {
   const { user } = useAuth();
-  const { canManageUsers, userRole } = useUserRoles();
+  const { canManageUsers, userRoles } = useUserRoles();
   const [reportCards, setReportCards] = useState<ReportCardWithProfile[]>([]);
   const [trendData, setTrendData] = useState<any[]>([]);
   const [performanceSummary, setPerformanceSummary] = useState<any>(null);
@@ -107,7 +107,7 @@ export const useReportCards = () => {
 
   useEffect(() => {
     fetchReportCards();
-  }, [user?.id, userRole]);
+  }, [user?.id, JSON.stringify(userRoles)]);
 
   return {
     reportCards,

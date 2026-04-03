@@ -123,10 +123,11 @@ export const PerformanceDashboard = () => {
   };
 
   // Calculate aggregate stats
+  const agentsWithScores = scorecards.filter(s => s.audits_30d > 0);
   const aggregateStats = {
     totalAgents: scorecards.length,
-    avgScore: scorecards.length
-      ? Math.round(scorecards.reduce((acc, s) => acc + (s.avg_score_30d || 0), 0) / scorecards.filter(s => s.avg_score_30d).length)
+    avgScore: agentsWithScores.length
+      ? Math.round(agentsWithScores.reduce((acc, s) => acc + (s.avg_score_30d || 0), 0) / agentsWithScores.length)
       : 0,
     totalAudits: scorecards.reduce((acc, s) => acc + (s.audits_30d || 0), 0),
     activeGoals: scorecards.reduce((acc, s) => acc + (s.active_goals || 0), 0),
@@ -135,28 +136,28 @@ export const PerformanceDashboard = () => {
     decliningAgents: scorecards.filter((s) => s.score_change_wow < -5).length,
   };
 
-  // Top performers
+  // Top performers (only agents who have audits)
   const topPerformers = [...scorecards]
-    .filter((s) => s.avg_score_30d !== null)
+    .filter((s) => s.audits_30d > 0 && s.avg_score_30d > 0)
     .sort((a, b) => (b.avg_score_30d || 0) - (a.avg_score_30d || 0))
     .slice(0, 5);
 
-  // Needs attention (low scores or declining)
+  // Needs attention (low scores or declining, among agents with audits)
   const needsAttention = scorecards
-    .filter((s) => (s.avg_score_30d !== null && s.avg_score_30d < 75) || s.score_change_wow < -10)
+    .filter((s) => s.audits_30d > 0 && ((s.avg_score_30d > 0 && s.avg_score_30d < 75) || s.score_change_wow < -10))
     .sort((a, b) => (a.avg_score_30d || 100) - (b.avg_score_30d || 100))
     .slice(0, 5);
 
   // Chart data for team comparison
   const teamComparisonData = teams.map((team) => {
-    const teamAgents = scorecards.filter((s) => s.team === team);
-    const avgScore = teamAgents.length
-      ? teamAgents.reduce((acc, s) => acc + (s.avg_score_30d || 0), 0) / teamAgents.filter(s => s.avg_score_30d).length
+    const teamAgentsWithScores = scorecards.filter((s) => s.team === team && s.audits_30d > 0);
+    const avgScore = teamAgentsWithScores.length
+      ? teamAgentsWithScores.reduce((acc, s) => acc + (s.avg_score_30d || 0), 0) / teamAgentsWithScores.length
       : 0;
     return {
       team,
       score: Math.round(avgScore),
-      agents: teamAgents.length,
+      agents: scorecards.filter((s) => s.team === team).length,
     };
   });
 

@@ -46,40 +46,39 @@ export const ReportCardsSelectForUser = async (userId: string) => {
 };
 
 // Get all report cards with profile info (manager view)
+// Uses a SECURITY DEFINER function to bypass RLS
 export const ReportCardsSelectAllWithProfiles = async () => {
-  const { data, error } = await supabase
-    .from("report_cards")
-    .select(`
-      *,
-      profiles:user_id (
-        first_name,
-        last_name,
-        email,
-        team
-      )
-    `)
-    .order("created_at", { ascending: false });
+  // Step 1: Get all report cards via RPC (bypasses RLS)
+  const { data: cards, error: rpcError } = await supabase.rpc('get_report_cards_for_manager');
+  if (rpcError) return { reportCards: null, error: rpcError };
 
-  return { reportCards: data as ReportCardWithProfile[], error };
+  // Step 2: Get profile info for all unique user_ids
+  const userIds = [...new Set((cards || []).map((c: any) => c.user_id))];
+  const { data: profiles } = await supabase
+    .from("profiles")
+    .select("id, first_name, last_name, email, team")
+    .in("id", userIds);
+
+  const profileMap = new Map((profiles || []).map((p: any) => [p.id, p]));
+
+  // Step 3: Merge
+  const merged = (cards || []).map((c: any) => ({
+    ...c,
+    profiles: profileMap.get(c.user_id) || null,
+  }));
+
+  return { reportCards: merged as ReportCardWithProfile[], error: null };
 };
 
-// Get report cards filtered by team
+// Get report cards filtered by team (uses RPC to bypass RLS)
 export const ReportCardsSelectByTeam = async (team: string) => {
-  const { data, error } = await supabase
-    .from("report_cards")
-    .select(`
-      *,
-      profiles:user_id (
-        first_name,
-        last_name,
-        email,
-        team
-      )
-    `)
-    .eq("profiles.team", team)
-    .order("created_at", { ascending: false });
+  const { reportCards, error } = await ReportCardsSelectAllWithProfiles();
+  if (error) return { reportCards: null, error };
 
-  return { reportCards: data as ReportCardWithProfile[], error };
+  const filtered = (reportCards || []).filter(
+    (rc) => rc.profiles?.team === team
+  );
+  return { reportCards: filtered, error: null };
 };
 
 // Get report cards for date range
