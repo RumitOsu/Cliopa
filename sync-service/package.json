@@ -5,6 +5,9 @@
   "main": "sync.js",
   "type": "module",
   "scripts": {
+    "seed": "node seed-transcripts.js",
+    "seed:dry": "DRY_RUN=true node seed-transcripts.js",
+    "seed:small": "TARGET_CALLS=50 DELAY_MS=1200 node seed-transcripts.js",
     "sync": "node sync.js",
     "sync:once": "node sync.js --once",
     "test-connection": "node test-connection.js",
@@ -24,6 +27,7 @@
     "express": "^5.2.0",
     "mssql": "^10.0.2",
     "node-fetch": "^3.3.2",
-    "openai": "^4.0.0"
+    "openai": "^4.0.0",
+    "pg": "^8.20.0"
   }
 }

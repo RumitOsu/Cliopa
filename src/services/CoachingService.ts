@@ -407,37 +407,115 @@ export const CoachingService = {
 
   // ============================================
   // Agent Scorecards (Aggregated Performance)
+  // NOTE: Computed from individual tables to avoid
+  // Cartesian product bug in the agent_scorecards SQL view.
   // ============================================
 
   async getAgentScorecards(filters?: {
     team?: string;
     agentId?: string;
   }): Promise<AgentScorecard[]> {
-    let query = supabase
-      .from('agent_scorecards')
-      .select('*')
-      .order('avg_score_30d', { ascending: false, nullsFirst: false });
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).toISOString();
+    const fourteenDaysAgo = new Date(now.getTime() - 14 * 86400000).toISOString();
 
-    if (filters?.team) {
-      query = query.eq('team', filters.team);
-    }
-    if (filters?.agentId) {
-      query = query.eq('agent_id', filters.agentId);
-    }
+    // 1. Fetch profiles (non-admin agents)
+    let profileQuery = supabase
+      .from('profiles')
+      .select('id, first_name, last_name, email, team, role')
+      .not('role', 'eq', 'admin');
 
-    const { data, error } = await query;
-    if (error) throw error;
-    return data || [];
+    if (filters?.team) profileQuery = profileQuery.eq('team', filters.team);
+    if (filters?.agentId) profileQuery = profileQuery.eq('id', filters.agentId);
+
+    const { data: profiles, error: profileErr } = await profileQuery;
+    if (profileErr) throw profileErr;
+    if (!profiles?.length) return [];
+
+    const agentIds = profiles.map(p => p.id);
+
+    // 2. Fetch report cards (last 30 days) — separate query to avoid Cartesian product
+    const { data: reportCards } = await supabase
+      .from('report_cards')
+      .select('user_id, overall_score, compliance_score, communication_score, empathy_score, created_at')
+      .in('user_id', agentIds)
+      .gte('created_at', thirtyDaysAgo);
+
+    // 3. Fetch goals
+    const { data: goals } = await supabase
+      .from('agent_goals')
+      .select('agent_id, status, completed_date')
+      .in('agent_id', agentIds);
+
+    // 4. Fetch coaching sessions
+    const { data: coaching } = await supabase
+      .from('coaching_sessions')
+      .select('agent_id, status, completed_at, scheduled_at')
+      .in('agent_id', agentIds);
+
+    // 5. Fetch time entries (last 30 days)
+    const { data: timeEntries } = await supabase
+      .from('time_entries')
+      .select('user_id, total_hours, start_time')
+      .in('user_id', agentIds)
+      .gte('start_time', thirtyDaysAgo);
+
+    // 6. Aggregate per agent
+    const scorecards: AgentScorecard[] = profiles.map(p => {
+      const rc30d = (reportCards || []).filter(r => r.user_id === p.id);
+      const rcWeek = rc30d.filter(r => r.created_at >= sevenDaysAgo);
+      const rcPrevWeek = rc30d.filter(r => r.created_at >= fourteenDaysAgo && r.created_at < sevenDaysAgo);
+
+      const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+      const round1 = (v: number | null) => v !== null ? Math.round(v * 10) / 10 : null;
+
+      const avgScore30d = round1(avg(rc30d.map(r => r.overall_score).filter((v): v is number => v !== null)));
+      const avgWeek = avg(rcWeek.map(r => r.overall_score).filter((v): v is number => v !== null));
+      const avgPrevWeek = avg(rcPrevWeek.map(r => r.overall_score).filter((v): v is number => v !== null));
+      const scoreChangeWow = (avgWeek !== null && avgPrevWeek !== null)
+        ? round1(avgWeek - avgPrevWeek) : null;
+
+      const agentGoals = (goals || []).filter(g => g.agent_id === p.id);
+      const agentCoaching = (coaching || []).filter(c => c.agent_id === p.id);
+      const agentTime = (timeEntries || []).filter(t => t.user_id === p.id);
+
+      return {
+        agent_id: p.id,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        email: p.email,
+        team: p.team,
+        role: p.role,
+        audits_30d: rc30d.length,
+        avg_score_30d: avgScore30d as number,
+        compliance_30d: round1(avg(rc30d.map(r => r.compliance_score).filter((v): v is number => v !== null))) as number,
+        communication_30d: round1(avg(rc30d.map(r => r.communication_score).filter((v): v is number => v !== null))) as number,
+        empathy_30d: round1(avg(rc30d.map(r => r.empathy_score).filter((v): v is number => v !== null))) as number,
+        score_change_wow: (scoreChangeWow ?? 0) as number,
+        active_goals: agentGoals.filter(g => g.status === 'active').length,
+        goals_completed_30d: agentGoals.filter(g => g.status === 'completed' && g.completed_date && g.completed_date >= thirtyDaysAgo).length,
+        coaching_sessions_30d: agentCoaching.filter(c => c.status === 'completed' && c.completed_at && c.completed_at >= thirtyDaysAgo).length,
+        next_coaching_session: agentCoaching
+          .filter(c => c.status === 'scheduled' && c.scheduled_at && c.scheduled_at > now.toISOString())
+          .sort((a, b) => (a.scheduled_at! > b.scheduled_at! ? 1 : -1))[0]?.scheduled_at,
+        hours_worked_30d: Math.round((agentTime.reduce((sum, t) => sum + (t.total_hours || 0), 0)) * 10) / 10,
+      };
+    });
+
+    // Sort by avg_score_30d descending, nulls last
+    scorecards.sort((a, b) => {
+      if (a.avg_score_30d === null && b.avg_score_30d === null) return 0;
+      if (a.avg_score_30d === null) return 1;
+      if (b.avg_score_30d === null) return -1;
+      return b.avg_score_30d - a.avg_score_30d;
+    });
+
+    return scorecards;
   },
 
   async getAgentScorecard(agentId: string): Promise<AgentScorecard | null> {
-    const { data, error } = await supabase
-      .from('agent_scorecards')
-      .select('*')
-      .eq('agent_id', agentId)
-      .single();
-
-    if (error && error.code !== 'PGRST116') throw error;
-    return data;
+    const results = await this.getAgentScorecards({ agentId });
+    return results[0] || null;
   },
 };
